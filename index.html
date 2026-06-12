@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>canvas game (벽돌 가로 8개, 세로 4개)</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    
+    <style>
+        @font-face {
+            font-family: 'Galmuri14';
+            src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2506-1@1.0/Galmuri14.woff2') format('woff2');
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        body { 
+            background-color: #100025; 
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Galmuri14';
+            background-image: url('./img/canvas-game.png');
+            background-size: 78%;        
+            background-position: center;    
+            background-repeat: no-repeat;  
+        }
+
+        #gameBox { position: relative; }
+
+        canvas { 
+            border: 6px solid #f7e925; 
+            border-radius: 15px;
+            background-color: #000; 
+            box-shadow: 0 0 20px #f7e925, inset 0 0 10px #f7e925;
+            cursor: url('./img/cute2.png') 16 16, auto;
+        }
+        
+        button {
+            padding: 15px 40px;
+            font-size: 24px;
+            font-weight: bold;
+            font-family: 'Galmuri14';
+            color: #fbff00;
+            background: #b400a5;
+            border: 3px solid #4cc9f0;
+            border-radius: 10px;
+            cursor: pointer;
+            text-transform: uppercase;
+            box-shadow: 4px 4px 0px #4ccaf06e;
+            transition: all 0.1s;
+            display: none;
+        }
+
+        button:hover {
+            background: #4cc9f0;
+            color: #000;
+            transform: translate(-50%, -50%) scale(1.05);
+        }
+
+        #restartBtn { position: absolute; left: 50%; top: 60%; transform: translate(-50%, -50%); }
+        #startBtn { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+    </style>
+</head>
+<body>
+    <div id="gameBox">
+        <canvas width="800" height="500"></canvas>
+        <button id="restartBtn">다시 시작</button>
+        <button id="startBtn">게임 시작</button>
+    </div>
+
+    <script>
+        const canvas = document.querySelector("canvas")
+        const restartBtn = document.getElementById("restartBtn")
+        const startBtn = document.getElementById("startBtn")
+        const ctx = canvas.getContext("2d")
+
+        // 공 정의
+        let ballX
+        let ballY
+        let ballR = 10
+        let ballSpeedX
+        let ballSpeedY
+
+        // 바 정의
+        let barX
+        let barY = canvas.height - 40
+        let barW = 100
+        let barH = 15
+        let barSpeed = 10 // [+ 추가] 키보드 방향키를 누를 때 이동할 거리
+
+        // 벽돌 정의
+        let bricks = []
+        let bricksRow = 4
+        let bricksCol = 8
+        let bricksW = 80
+        let bricksH = 25
+        let bricksGap = 15
+
+        // [추가] 키보드 입력 상태 저장
+        let rightPressed = false
+        let leftPressed = false
+
+        // 게임 상태
+        let gameOver
+        let aniId
+        let fontLoaded = false
+
+        function startGame(){
+            // 루프 중복 방지
+            if (aniId) {
+                cancelAnimationFrame(aniId)
+            }
+
+            ballX = canvas.width / 2 // 정중앙으로 가렴 ~
+            ballY = canvas.height - 80 // 설명 :: 40 + 15 + 20(공 반지름 = 10) = 75(살짝 더 띄워주기 위해 +5)
+            ballSpeedX = 4 // X 속도
+            ballSpeedY = -4 // Y 속도
+
+            // 바에 대한 개념 (정보)
+            barX = canvas.width/2 - barW/2
+            
+            // 벽돌에 대한 개념 (정보)
+            bricks = []
+
+            for(let row = 0; row < bricksRow; row++){
+                for(let col = 0; col < bricksCol; col++){
+                    bricks.push({
+                        // x: 왼쪽 여백(30) + (열 번호 * (벽돌너비 + 간격))
+                        x : 30 + col * (bricksW + bricksGap), // 55 :: 마진 , (bricksW + bricksGap) :: 더하기(+) 먼저 해달라고 괄호 꼭 필요함 !
+
+                        // y: 위쪽 여백(25) + (행 번호 * (벽돌높이 + 간격))
+                        y : 25 + row * (bricksH + bricksGap),
+                        color: `hsl(${Math.random() * 360}, 70%, 60%)`, // 벽돌 랜덤 색상 지정 !!
+                        show : true // 모두 보이는 상태로 출발
+                    })
+                }
+            }
+            // 게임상태 (정보)
+            gameOver = false // 준비가 아직 안됐어~ 라는 뜻
+            restartBtn.style.display = "none"
+            startBtn.style.display = "none"
+
+            animate()
+        }
+
+        // 그리기 
+        function draw(){
+            ctx.clearRect(0,0,canvas.width,canvas.height) // 깨끗하게 비운 상태.
+
+            // 공
+            ctx.beginPath()
+            ctx.fillStyle = "gold"
+            ctx.arc(ballX, ballY, ballR, 0, Math.PI * 2)
+            ctx.fill()
+
+            // 바
+            ctx.beginPath()
+            ctx.fillStyle = "skyblue"
+            ctx.fillRect(barX, barY, barW, barH)
+
+            // 벽돌
+            for(let i=0; i<bricks.length; i++){
+                if(bricks[i].show){
+                    ctx.fillStyle = bricks[i].color
+                    ctx.fillRect(bricks[i].x, bricks[i].y, bricksW, bricksH)
+                }  
+            }
+
+            // 게임 오버 텍스트 표시
+            if(gameOver){
+                ctx.fillStyle = "rgba(0,0,0,0.6)"
+                ctx.fillRect(0,0,canvas.width,canvas.height)
+                ctx.fillStyle = "red"
+                ctx.font = '45px "Press Start 2P"'
+                ctx.textAlign = "center"
+                ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2.2)
+            }
+        }
+        
+        // 게임 종료 (처리)
+        function endGame(){
+            gameOver = true
+            cancelAnimationFrame(aniId)
+            draw() // 마지막 상태 그리기
+            restartBtn.style.display = "block" // 다시 시작 버튼 표시
+        }
+
+        function move(){
+            // 공 좌표 변경 ( 스피드 )
+            ballX += ballSpeedX
+            ballY += ballSpeedY
+
+            // [추가] 키보드 방향키에 따른 바 이동 로직
+            if(rightPressed && barX + barW < canvas.width) {
+                barX += barSpeed
+            } else if(leftPressed && barX > 0) {
+                barX -= barSpeed
+            }
+
+            // 벽 충돌 (좌우)
+            if( ballX + ballR > canvas.width || ballX - ballR < 0 ){
+                ballSpeedX *= -1
+            }
+            // 벽 충돌 (위)
+            if( ballY - ballR < 0 ){
+                ballSpeedY *= -1
+            }
+            // 바 충돌
+            if( ballY + ballR > barY && ballX > barX && ballX < barW + barX ){
+                ballSpeedY *= -1
+            }
+
+            // 벽돌 충돌
+            for( let i = 0; i < bricks.length; i++){
+                let b = bricks[i]
+
+                // b.show가 true여야 함
+                // 공의 중심이 벽돌의 왼쪽 끝보다 크고, 오른쪽 끝보다 작아야 함
+                // 공의 중심이 벽돌의 위쪽 끝보다 크고, 아래쪽 끝보다 작아야 함
+
+                if( b.show &&
+                    ballX > b.x && ballX < b.x + bricksW &&
+                    ballY > b.y && ballY < b.y + bricksH 
+                ){
+                    b.show = false // 벽돌을 숨김 처리
+                    ballSpeedY *= -1 // 벽돌에 닿으면 튕김
+                    ballY += ballSpeedY // 공을 벽돌 밖으로 살짝 밀어내어 겹침 방지
+                }
+            }
+
+            // 게임 오버 (바닥)
+            if(ballY + ballR > canvas.height) endGame()
+        }
+
+        // 그리고 지우고 그리고 빨리 실행
+        function animate(){
+            if(gameOver) return
+            move()
+            draw()
+            aniId = requestAnimationFrame(animate) // 나 스스로를 작동
+        }
+
+        // 마우스로 바 이동
+        canvas.addEventListener("mousemove" , function(e){
+            let rect = canvas.getBoundingClientRect()
+            let mouseX = e.clientX - rect.left
+            barX = mouseX - barW / 2
+
+            if (barX < 0) barX = 0
+            if (barX + barW > canvas.width) barX = canvas.width - barW
+        })
+
+        // 키보드 바 이동
+        document.addEventListener("keydown", function(e) {
+            if(e.key === "ArrowRight") rightPressed = true
+            else if(e.key === "ArrowLeft") leftPressed = true
+        })
+
+        document.addEventListener("keyup", function(e) {
+            if(e.key === "ArrowRight") rightPressed = false
+            else if(e.key === "ArrowLeft") leftPressed = false
+        })
+
+        async function loadFonts() {
+            await document.fonts.load('45px "Press Start 2P"')
+            await document.fonts.load('20px "Press Start 2P"')
+        }
+
+        loadFonts().then(() => {
+            fontLoaded = true
+            startBtn.style.display = "block"
+            draw()
+        })
+
+        startBtn.addEventListener("click", function () {
+            if(!fontLoaded) return
+            startGame()
+        })
+
+        restartBtn.addEventListener("click", function(){
+            startGame()
+        })
+    </script>
+</body>
+</html>
